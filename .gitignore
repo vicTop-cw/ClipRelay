@@ -1,5 +1,6 @@
 # 3rd-party binaries (download separately)
-lftp/bin/
+lftp/bin/*
+!lftp/bin/README.md
 
 # Sensitive config
 config.ps1
