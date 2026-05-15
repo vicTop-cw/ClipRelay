@@ -1,122 +1,122 @@
-# ClipRelay — 本地↔跳板机剪贴板共享
+# ClipRelay — Cross-Device Clipboard Sync
 
-双向同步本地与跳板机之间的剪贴板内容，支持文件和文本。
+Bidirectional clipboard sync between a local Windows workstation and a remote jump server, using the filesystem as a relay medium to bypass RDP clipboard redirection risks.
 
-## 工作原理
+## Architecture
 
 ```
-┌─────────────┐         SFTP          ┌─────────────┐
-│   本地 PC    │ ◄══════════════════► │   跳板机     │
-│             │                      │             │
-│ 监控文件夹   │ ←── 文件同步 ──→   │ 监控文件夹   │
-│     ↕       │                      │     ↕       │
-│  剪贴板     │ ←── 内容传输 ──→   │  剪贴板     │
-└─────────────┘                      └─────────────┘
+┌─────────────────────────┐       lftp SFTP        ┌─────────────────────────┐
+│   Local Workstation     │ ◄───────────────────► │     Jump Server         │
+│                         │                         │                         │
+│  Clipboard ──► RelayDir │    Push: local→remote   │  RelayDir ──► Clipboard │
+│  Clipboard ◄── RelayDir │    Pull: remote→local   │  RelayDir ◄── Clipboard │
+│                         │                         │                         │
+│  D:\work\Clip\20260515/ │                         │  C:\FTP\test\Victor\Temp│
+└─────────────────────────┘                         └─────────────────────────┘
 ```
 
-- **本地→跳板机**：复制内容到剪贴板 → 自动上传到跳板机监控文件夹
-- **跳板机→本地**：跳板机监控文件夹有新文件 → 自动复制到本地剪贴板
-- **防递归**：程序写入剪贴板时加标记，不会再次上传
+**Anti-recursion**: Programmatic writes to the relay directory are tagged and ignored by the file watcher, preventing infinite loops.
 
-## 环境要求
+## Requirements
 
-- Windows 7+ / Windows Server
-- PowerShell 5.1+
-- SFTP 客户端（二选一）：
-  - **lftp**（推荐）— 需 Windows 版，放入 `lftp/bin/lftp.exe`
-  - **WinSCP** — 安装后将 `WinSCP.com` 路径填入配置
+| Component | Notes |
+|-----------|-------|
+| Windows 10+ / Server 2019+ | Both machines |
+| PowerShell 5.1+ | Built-in |
+| lftp for Windows | [Download](https://nwgat.ninja/lftp-for-windows/) → place in `lftp/bin/` |
+| SFTP server | Jump server needs SSHD (e.g., OpenSSH Server) |
 
-## 快速开始
+## Quick Start
 
-### 1. 编辑配置
-
-打开 `ClipRelay.ps1`，修改配置区：
+### 1. Copy and edit config
 
 ```powershell
-$REMOTE_IP       = "你的跳板机IP"
-$REMOTE_PORT     = "10022"
-$CREDENTIALS     = "用户名:密码"
+# PowerShell config
+copy config.example.ps1 config.ps1
+# Edit config.ps1 with your jump server credentials
 
-$MINITOR_LOCAL_PATH = "D:\work\Clip\$(Get-Date -Format 'yyyyMMdd')"
-$MINITOR_JUMP_PATH  = "C:\FTP\test\Victor\Temp"
+# WSL config (for monitorclip.sh)
+copy config.example.sh config.sh
+# Edit config.sh with your jump server credentials
 ```
 
-### 2. 本地启动
+### 2. Install lftp
+
+Download lftp for Windows and place all binaries in `lftp/bin/`.  
+See [lftp/bin/README.md](lftp/bin/README.md) for details.
+
+### 3. Run (Local Workstation)
+
+Double-click `ClipRelay-local.bat`, or:
 
 ```powershell
-powershell -File ClipRelay.ps1 -Mode local
+powershell -STA -File "ClipRelay.ps1" -Role local
 ```
 
-### 3. 跳板机启动
+### 4. Run (Jump Server)
+
+Double-click `ClipRelay-remote.bat`, or:
 
 ```powershell
-powershell -File ClipRelay.ps1 -Mode jump
+powershell -STA -File "ClipRelay.ps1" -Role remote
 ```
 
-## 剪贴板规则
+### Optional: WSL Monitor (Linux/WSL on local workstation)
 
-| 剪贴板内容 | 行为 |
-|-----------|------|
-| 文本 | 保存为 `ClipContent.txt` 上传 |
-| 文件（Ctrl+C 复制文件） | 直接传输文件到对方文件夹 |
-| 图片 | 当前版本暂不处理 |
+```bash
+# Deploy
+sudo cp monitorclip.sh /usr/local/bin/minitorclip
+sudo chmod +x /usr/local/bin/minitorclip
 
-## 监控规则
-
-| 触发条件 | 行为 |
-|---------|------|
-| 文件夹新增文件 | 复制到剪贴板（程序标记） |
-| 文件夹文件更新 | 复制到剪贴板（程序标记） |
-| 用户剪贴板变化 | 上传到对方文件夹 |
-
-## 测试方法
-
-### 本地测试
-
-```powershell
-# 1. 启动脚本
-powershell -File ClipRelay.ps1 -Mode local
-
-# 2. 复制一段文本
-echo "hello from local" | Set-Clipboard
-
-# 3. 查看跳板机上是否出现 ClipContent.txt
+# Run
+minitorclip
 ```
 
-### 双向测试
+Monitors Windows clipboard via WSL interop and syncs to the jump server via SFTP.  
+Also pulls remote file changes back to `D:\work\Clip\yyyyMMdd`.
 
-```powershell
-# 本地终端
-powershell -File ClipRelay.ps1 -Mode local
+## Additional Scripts
 
-# 跳板机终端（通过 RDP/SSH 连接后）
-powershell -File ClipRelay.ps1 -Mode jump
-```
+| Script | Description |
+|--------|-------------|
+| `JumpRelay.ps1` | Lightweight jump server monitor — watches `C:\FTP\test\Victor\Temp` and copies new/updated files to clipboard. Use `-SyncBack` to enable reverse sync. |
+| `JumpRelay.bat` | Launcher for JumpRelay.ps1 |
+| `miniclip.ps1` | Generic file-to-clipboard watcher (pass a file path to monitor) |
 
-## lftp for Windows
+## Configuration
 
-Windows 版 lftp 可通过以下方式获取：
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `$TransferMode` | `"lftp"` | Transport: `"lftp"` (SFTP) or `"direct"` (UNC path) |
+| `$ClipPollInterval` | `2` | Clipboard poll interval (seconds) |
+| `$SyncInterval` | `3` | File sync interval (seconds) |
+| `$AntiRecursionWindow` | `3` | Anti-recursion window (seconds) |
+| `$LogLevel` | `"INFO"` | Log level: `DEBUG` / `INFO` / `WARN` |
 
-1. **Cygwin**：`apt-cyg install lftp`
-2. **MSYS2**：`pacman -S lftp`  
-3. **WSL**：在 WSL 中运行脚本，lftp 已内置
-
-或使用 WinSCP 替代（修改脚本中 `Invoke-Lftp*` 函数）。
-
-## 文件结构
+## Directory Structure
 
 ```
 ClipRelay/
-├── ClipRelay.ps1          # 主脚本
-├── lftp/
-│   └── bin/
-│       └── lftp.exe       # Windows lftp 二进制（需自行下载）
-├── temp/                   # 临时文件（自动创建）
-└── README.md              # 本文件
+├── ClipRelay.ps1            # Main script
+├── ClipRelay-local.bat      # Local mode launcher
+├── ClipRelay-remote.bat     # Jump server mode launcher
+├── JumpRelay.ps1            # Lightweight jump server monitor
+├── JumpRelay.bat            # JumpRelay launcher
+├── monitorclip.sh           # WSL clipboard monitor
+├── miniclip.ps1             # File watcher utility
+├── config.example.ps1       # PowerShell config template
+├── config.example.sh        # Bash config template
+├── config.ps1               # Your credentials (gitignored)
+├── config.sh                # Your credentials (gitignored)
+├── README.md
+└── lftp/bin/
+    └── README.md            # lftp download instructions
 ```
 
-## 注意事项
+## Security
 
-- 账密明文存储在脚本中，建议设置文件权限 `icacls ClipRelay.ps1 /inheritance:r /grant "$env:USERNAME:R"`
-- 首次连接需手动接受 SSH host key（或设置 `set sftp:auto-confirm yes`）
-- 文件夹路径不存在时自动创建
+- **Never commit `config.ps1` or `config.sh`** — they are in `.gitignore`.
+- For production, prefer SSH key authentication over passwords.  
+  Configure in `%USERPROFILE%\.ssh\config` and remove the password from lftp commands.
+- SFTP encrypts all data in transit.
+- The relay directory contains clipboard content — restrict access to your user account.

@@ -1,0 +1,15 @@
+# 3rd-party binaries (download separately)
+lftp/bin/*
+!lftp/bin/README.md
+
+# Sensitive config
+config.ps1
+config.sh
+
+# Temp/scratch files
+temp/
+
+# OS junk
+Thumbs.db
+desktop.ini
+.DS_Store
