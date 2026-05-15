@@ -24,9 +24,9 @@ param(
 # ============================================================
 
 # --- 跳板机 SFTP 连接 ---
-$REMOTE_IP       = "47.93.7.122"          # 跳板机 IP
-$REMOTE_PORT     = "10022"                # SFTP 端口
-$CREDENTIALS     = "test:s@8@Nrrk"        # 用户名:密码
+$REMOTE_IP       = "你的跳板机IP"          # 跳板机 IP
+$REMOTE_PORT     = "10032"                # SFTP 端口
+$CREDENTIALS     = "用户名:密码"        # 用户名:密码
 
 # --- 监控文件夹 ---
 $MINITOR_LOCAL_PATH = "D:\work\Clip\$(Get-Date -Format 'yyyyMMdd')"   # 本地监控文件夹（按日期）
